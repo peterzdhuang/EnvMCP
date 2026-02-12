@@ -108,5 +108,51 @@ def secure_shell_executor(command: str, dry_run: bool = True) -> str:
     except Exception as e:
         return f"Error executing command: {str(e)}"
 
+@mcp.tool()
+def read_error_file(file_path: str, max_lines: int = 100) -> str:
+    """Reads a specific error log or crash report file.
+    
+    Use this when a previous command fails and indicates a log file location 
+    (e.g. 'See /tmp/error.log for details').
+    """
+    file_path = os.path.expanduser(file_path)
+    if not os.path.exists(file_path):
+        return f"Error: Log file not found at {file_path}"
+    
+    try:
+        if not os.path.isfile(file_path):
+            return f"Error: Path {file_path} is not a file."
+
+        size = os.path.getsize(file_path)
+        
+        with open(file_path, "rb") as f:
+            # If file is relatively small (under 1MB), read fully
+            if size < 1024 * 1024: 
+                content = f.read().decode('utf-8', errors='replace')
+                lines = content.splitlines()
+                # If we still want to respect max_lines
+                if len(lines) > max_lines:
+                     return "\n".join(lines[-max_lines:])
+                return content
+            
+            # If large, seek to end and read backwards approximately
+            # Estimate 100 bytes per line to be safe
+            read_size = max_lines * 200 
+            f.seek(0, os.SEEK_END)
+            file_end = f.tell()
+            f.seek(max(0, file_end - read_size))
+            
+            content = f.read().decode('utf-8', errors='replace')
+            lines = content.splitlines()
+            
+            # The first line might be partial because of the seek, so drop it if we didn't read from start
+            if file_end > read_size and len(lines) > 0:
+                lines = lines[1:]
+                
+            return "\n".join(lines[-max_lines:])
+            
+    except Exception as e:
+        return f"Failed to read file: {str(e)}"
+
 if __name__ == "__main__":
     mcp.run()
